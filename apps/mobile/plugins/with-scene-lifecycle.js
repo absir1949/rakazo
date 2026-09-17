@@ -51,7 +51,15 @@ function withSceneLifecycle(config) {
 }
 
 function applySceneLifecycleToAppDelegate(contents) {
+  // Only treat the file as already migrated when no legacy window startup is
+  // left; a file with both would double-start React Native (the app delegate
+  // and the scene delegate each call startReactNative).
   if (contents.includes("ExpoReactNativeFactoryProvider")) {
+    if (contents.includes(LAUNCHING_BLOCK)) {
+      throw new Error(
+        "with-scene-lifecycle: AppDelegate already conforms to ExpoReactNativeFactoryProvider but still has legacy window startup; refusing to guess.",
+      );
+    }
     return contents;
   }
 

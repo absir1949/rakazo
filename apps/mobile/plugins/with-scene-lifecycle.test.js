@@ -80,6 +80,19 @@ describe("applySceneLifecycleToAppDelegate", () => {
       /template changed/,
     );
   });
+
+  it("fails loudly when only one anchor survives template drift", () => {
+    const noLaunchingBlock = TEMPLATE.replace(/#if os\(iOS\)[\s\S]*?#endif\n\n/, "");
+    expect(() => applySceneLifecycleToAppDelegate(noLaunchingBlock)).toThrow(/template changed/);
+  });
+
+  it("refuses a partially migrated AppDelegate instead of skipping it", () => {
+    const partial = TEMPLATE.replace(
+      "class AppDelegate: ExpoAppDelegate {",
+      "class AppDelegate: ExpoAppDelegate, ExpoReactNativeFactoryProvider {",
+    );
+    expect(() => applySceneLifecycleToAppDelegate(partial)).toThrow(/refusing to guess/);
+  });
 });
 
 describe("applySceneManifest", () => {
