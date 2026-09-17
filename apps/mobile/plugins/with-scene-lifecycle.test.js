@@ -53,18 +53,18 @@ class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {
 `;
 
 describe("applySceneLifecycleToAppDelegate", () => {
-  it("moves window creation into a scene delegate", () => {
+  it("hands window creation to Expo's scene delegate", () => {
     const result = applySceneLifecycleToAppDelegate(TEMPLATE);
 
-    expect(result).toContain("configuration.delegateClass = SceneDelegate.self");
-    expect(result).toContain("let window = UIWindow(windowScene: windowScene)");
-    expect(result).toContain("class SceneDelegate: UIResponder, UIWindowSceneDelegate");
+    // The app delegate only provides the factory; the scene manifest routes
+    // to Expo's EXExpoAppSceneDelegate, so no window code stays behind.
+    expect(result).toContain(
+      "class AppDelegate: ExpoAppDelegate, ExpoReactNativeFactoryProvider {",
+    );
+    expect(result).toContain("let factory = ExpoReactNativeFactory(delegate: delegate)");
     expect(result).not.toContain("UIWindow(frame: UIScreen.main.bounds)");
-    // React Native still receives the launch options captured at app launch.
-    expect(result).toContain("self.launchOptions = launchOptions");
-    expect(result).toContain("launchOptions: appDelegate.launchOptions");
-    // Cold-start deep links still reach React Linking.
-    expect(result).toContain("connectionOptions.urlContexts.first?.url");
+    expect(result).not.toContain("startReactNative(");
+    expect(result).not.toContain("class SceneDelegate");
     // Pre-existing template behavior is untouched.
     expect(result).toContain("RCTLinkingManager.application(app, open: url, options: options)");
     expect(result).toContain("class ReactNativeDelegate: ExpoReactNativeFactoryDelegate");
@@ -83,7 +83,7 @@ describe("applySceneLifecycleToAppDelegate", () => {
 });
 
 describe("applySceneManifest", () => {
-  it("declares a single-scene manifest pointing at SceneDelegate", () => {
+  it("declares a single-scene manifest pointing at Expo's scene delegate", () => {
     const infoPlist = applySceneManifest({});
 
     expect(infoPlist.UIApplicationSceneManifest).toEqual({
@@ -92,7 +92,7 @@ describe("applySceneManifest", () => {
         UIWindowSceneSessionRoleApplication: [
           {
             UISceneConfigurationName: "main",
-            UISceneDelegateClassName: "$(PRODUCT_MODULE_NAME).SceneDelegate",
+            UISceneDelegateClassName: "EXExpoAppSceneDelegate",
           },
         ],
       },
