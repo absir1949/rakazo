@@ -1,5 +1,11 @@
 import type { BackgroundJobHandlers } from "@rakazo/adapter-kit";
+import {
+  HISTORY_COMPACT_MAX_ATTEMPTS,
+  historyCompactJob,
+  messagingDeliverJob,
+} from "@rakazo/adapter-kit";
 import type { Runner } from "graphile-worker";
+import { makeWorkerUtils } from "graphile-worker";
 import type { Pool } from "pg";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -10,7 +16,11 @@ vi.mock("graphile-worker", () => ({
   makeWorkerUtils: vi.fn(),
 }));
 
-import { databaseCapacityBackoffMs, GraphileJobWorkerHost } from "./wakeup.js";
+import {
+  databaseCapacityBackoffMs,
+  GraphileJobPublisher,
+  GraphileJobWorkerHost,
+} from "./wakeup.js";
 
 function handlers(): BackgroundJobHandlers {
   return {
@@ -64,6 +74,37 @@ describe("databaseCapacityBackoffMs", () => {
     expect(databaseCapacityBackoffMs(3)).toBe(1_600);
     expect(databaseCapacityBackoffMs(8)).toBe(30_000);
     expect(databaseCapacityBackoffMs(20)).toBe(30_000);
+  });
+});
+
+describe("GraphileJobPublisher.enqueue", () => {
+  function publisherWith(addJob: ReturnType<typeof vi.fn>) {
+    vi.mocked(makeWorkerUtils).mockResolvedValue({
+      addJob,
+      release: vi.fn(async () => undefined),
+    } as never);
+    return new GraphileJobPublisher({} as Pool);
+  }
+
+  it("forwards the job's maxAttempts cap to graphile", async () => {
+    const addJob = vi.fn(async () => undefined);
+    const publisher = publisherWith(addJob);
+    await publisher.enqueue(historyCompactJob("thread-1"));
+    expect(addJob).toHaveBeenCalledWith(
+      "history.compact",
+      expect.anything(),
+      expect.objectContaining({ maxAttempts: HISTORY_COMPACT_MAX_ATTEMPTS }),
+    );
+    await publisher.close();
+  });
+
+  it("leaves the queue default when the job sets no cap", async () => {
+    const addJob = vi.fn(async (..._args: unknown[]) => undefined);
+    const publisher = publisherWith(addJob);
+    await publisher.enqueue(messagingDeliverJob("run-1"));
+    const options = addJob.mock.calls[0]?.[2] as { maxAttempts?: number } | undefined;
+    expect(options?.maxAttempts).toBeUndefined();
+    await publisher.close();
   });
 });
 

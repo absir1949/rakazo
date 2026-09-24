@@ -507,6 +507,8 @@ export type BackgroundJob = {
     payload: BackgroundJobPayloads[Name];
     availableAt?: Date;
     replaceKey?: string;
+    /** Cap retried executions; omit to use the job queue's default. */
+    maxAttempts?: number;
   };
 }[BackgroundJobName];
 

@@ -25,6 +25,7 @@ export class GraphileJobPublisher implements JobPublisher {
     await utils.addJob(job.name, wrapJobPayload(job.payload), {
       runAt: job.availableAt,
       jobKey: job.replaceKey,
+      maxAttempts: job.maxAttempts,
     });
   }
 
