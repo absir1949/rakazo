@@ -1,3 +1,4 @@
+import { HISTORY_COMPACT_MAX_ATTEMPTS, historyCompactJob } from "@rakazo/adapter-kit";
 import type { BackgroundJobHandlers } from "@rakazo/adapter-kit";
 import { Pool } from "pg";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -168,4 +169,38 @@ describePostgres("Graphile background jobs (PostgreSQL contract)", () => {
       await publisher.close();
     }
   });
+
+  it("stops a permanently failing history.compact job at its maxAttempts cap", async () => {
+    // Leftover jobs from an earlier run on a shared database would otherwise
+    // execute through this suite's handlers and skew the attempt counter.
+    await testPool().query(
+      "DELETE FROM graphile_worker._private_jobs WHERE task_id IN " +
+        "(SELECT id FROM graphile_worker._private_tasks WHERE identifier IN ('history.compact', 'run.continue'))",
+    );
+    const publisher = new GraphileJobPublisher(testPool());
+    const host = new GraphileJobWorkerHost(testPool(), { concurrency: 1, pollInterval: 25 });
+    let attempts = 0;
+    const target = handlers({
+      "history.compact": async () => {
+        attempts += 1;
+        throw new Error("intentional contract-test failure");
+      },
+    });
+
+    try {
+      await host.start(target);
+      await publisher.enqueue(historyCompactJob(`contract-cap:${Date.now()}`));
+      await waitFor(
+        () => expect(attempts).toBe(HISTORY_COMPACT_MAX_ATTEMPTS),
+        60_000,
+      );
+      // Longer than the queue's next backoff step, so a fifth attempt would
+      // have landed here if the cap were ignored.
+      await new Promise((resolve) => setTimeout(resolve, 20_000));
+      expect(attempts).toBe(HISTORY_COMPACT_MAX_ATTEMPTS);
+    } finally {
+      await host.stop();
+      await publisher.close();
+    }
+  }, 90_000);
 });
