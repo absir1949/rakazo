@@ -9,6 +9,7 @@ import { combineSignals } from "./connector-safety.js";
 import {
   createAddressCheckedLookup,
   isCloudMetadataAddress,
+  isLinkLocalAddress,
   isPrivateAddress,
   isTailscaleAddress,
   type ResolvedAddress,
@@ -204,11 +205,13 @@ function assertPrivateAddresses(addresses: ResolvedAddress[]): void {
   }
   if (
     addresses.some((entry) => {
-      // isCloudMetadataAddress misses some provider endpoints (e.g. ECS task
-      // metadata at 169.254.170.2), so block the whole link-local range too.
-      if (isCloudMetadataAddress(entry.address)) return true;
-      if (entry.address.startsWith("169.254.")) return true;
-      return !isPrivateAddress(entry.address);
+      // Normalise IPv4-mapped IPv6 forms (e.g. ::ffff:169.254.170.2) so the
+      // link-local and metadata checks cannot be bypassed by their mapped
+      // representation. Cloud metadata endpoints stay blocked.
+      const address = entry.address.replace(/^::ffff:/i, "");
+      if (isCloudMetadataAddress(address)) return true;
+      if (isLinkLocalAddress(address)) return true;
+      return !isPrivateAddress(address);
     })
   ) {
     throw new Error("Private fetch URL resolved to a non-private address");

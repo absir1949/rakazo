@@ -7,11 +7,8 @@ import {
 } from "@rakazo/contracts";
 import type { Prisma, PrismaClient } from "@rakazo/db";
 import { combineSignals, redactConnectorPayload } from "./connector-safety.js";
-import {
-  createPrivateNetworkFetch,
-  createSafeRemoteFetch,
-  type RemoteTransportDependencies,
-} from "./remote-mcp.js";
+import type { RemoteTransportDependencies } from "./remote-mcp.js";
+import { createPrivateNetworkFetch, createSafeRemoteFetch } from "./remote-mcp.js";
 import type { EncryptedSecretStore } from "./secrets.js";
 import { readBodyCapped, withAbort } from "./web-ssrf.js";
 
