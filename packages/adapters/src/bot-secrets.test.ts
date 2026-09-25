@@ -4,6 +4,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { normalizeSecretDestination, requestWithBotSecret } from "./bot-secrets.js";
 import { EncryptedSecretStore } from "./secrets.js";
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 const scope = { userId: "user-1", spaceId: "space-1", botId: "bot-1" };
 const destination: BotSecretDestination = {
   name: "example_api",
@@ -165,13 +169,50 @@ describe("authenticated secret requests", () => {
     expect(await pending).toMatchObject({ error: expect.any(String) });
     expect(cancel).toHaveBeenCalled();
   });
+
+  it("delivers plain-HTTP private destination requests directly when the owner opts in", async () => {
+    vi.stubEnv("RAKAZO_SECRETS_ALLOW_PRIVATE_HTTP", "1");
+    const encrypted = await secretStore.put(
+      secret,
+      { ...scope, operationId: "test", traceId: "test", signal: new AbortController().signal },
+      "secret-2",
+    );
+    const row = {
+      ...scope,
+      name: "hive_api_token",
+      origin: "http://192.168.2.10:8080",
+      auth: { type: "bearer" as const },
+      ...encrypted,
+    };
+    const findFirst = vi.fn(async ({ where }) =>
+      Object.entries(where).every(([key, value]) => row[key as keyof typeof row] === value)
+        ? row
+        : null,
+    );
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => Response.json({ ok: true }));
+    const input = {
+      prisma: { botSecret: { findFirst } } as unknown as PrismaClient,
+      secretStore,
+      scope,
+      request: { name: "hive_api_token", url: "http://192.168.2.10:8080/v1/items" },
+      signal: new AbortController().signal,
+      remote: { fetch, resolveHostname: publicResolver },
+      registerRedactions: vi.fn(),
+    };
+    expect(await requestWithBotSecret(input)).toEqual({
+      status: 200,
+      body: { ok: true },
+      truncated: false,
+    });
+    expect(fetch).toHaveBeenCalledOnce();
+    const [url, init] = fetch.mock.calls[0] as [string, RequestInit | undefined];
+    expect(String(url)).toBe("http://192.168.2.10:8080/v1/items");
+    expect(init?.redirect).toBe("manual");
+    expect(new Headers(init?.headers).get("Authorization")).toBe(`Bearer ${secret}`);
+  });
 });
 
 describe("normalizeSecretDestination", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
   const lanDestination = {
     name: "hive_api_token",
     origin: "http://192.168.2.10:8080",

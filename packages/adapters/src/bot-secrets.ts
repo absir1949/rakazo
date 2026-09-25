@@ -1,6 +1,10 @@
 import { randomBytes } from "node:crypto";
 import type { BotSecretDestination } from "@rakazo/contracts";
-import { botSecretDestinationSchema, SecretHttpRequest } from "@rakazo/contracts";
+import {
+  botSecretDestinationSchema,
+  isPrivateNetworkHost,
+  SecretHttpRequest,
+} from "@rakazo/contracts";
 import type { Prisma, PrismaClient } from "@rakazo/db";
 import { combineSignals, redactConnectorPayload } from "./connector-safety.js";
 import { createSafeRemoteFetch, type RemoteTransportDependencies } from "./remote-mcp.js";
@@ -157,11 +161,26 @@ export async function requestWithBotSecret(input: {
   input.registerRedactions?.(redactions);
   const controller = new AbortController();
   const signal = combineSignals(input.signal, controller.signal, AbortSignal.timeout(30_000));
-  const fetch = createSafeRemoteFetch(input.remote?.fetch, input.remote?.resolveHostname);
+  // The safe fetch refuses plain-HTTP and private hosts outright. A credential
+  // saved under the owner's private-HTTP opt-in was validated against exactly
+  // those rules at save time, and the request URL is pinned to its origin, so
+  // deliver it directly with the same no-redirect boundary instead.
+  const privateHttpDestination =
+    allowPrivateHttpSecretOrigins() &&
+    url.protocol === "http:" &&
+    isPrivateNetworkHost(url.hostname);
+  const safeFetch = createSafeRemoteFetch(input.remote?.fetch, input.remote?.resolveHostname);
+  const fetch = privateHttpDestination ? (input.remote?.fetch ?? globalThis.fetch) : safeFetch;
   try {
     headers.set(headerName, headerValue);
     const response = await withAbort(
-      fetch(url, { method: request.method, headers, body: request.body, signal }),
+      fetch(url, {
+        method: request.method,
+        headers,
+        body: request.body,
+        redirect: "manual",
+        signal,
+      }),
       signal,
     );
     const bytes = await readBodyCapped(response, 1_000_000, signal);
@@ -183,6 +202,6 @@ export async function requestWithBotSecret(input: {
     return { error: "Authenticated request failed. Check the destination and credential." };
   } finally {
     controller.abort();
-    await withAbort(fetch.close(), AbortSignal.timeout(1000)).catch(() => undefined);
+    await withAbort(safeFetch.close(), AbortSignal.timeout(1000)).catch(() => undefined);
   }
 }
