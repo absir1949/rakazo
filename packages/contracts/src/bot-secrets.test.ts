@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BotSecretDestination,
   botSecretDestinationSchema,
+  isCloudMetadataHost,
   isPrivateNetworkHost,
   SecretHttpRequest,
 } from "./bot-secrets.js";
@@ -94,10 +95,19 @@ describe("private HTTP credential origins", () => {
       false,
     );
   });
-  it.each(["http://192.168.2.10:8080/upload", "http://192.168.2.10:8080?key=1"])(
-    "relaxed schema still rejects non-origin URLs %s",
-    (origin) => {
-      expect(relaxed.safeParse({ ...destination, origin }).success).toBe(false);
+  it.each([
+    "http://192.168.2.10:8080/upload",
+    "http://192.168.2.10:8080?key=1",
+    "http://100.100.100.200",
+    "http://169.254.170.2",
+    "http://169.254.169.254",
+  ])("relaxed schema still rejects non-origin URLs %s", (origin) => {
+    expect(relaxed.safeParse({ ...destination, origin }).success).toBe(false);
+  });
+  it.each(["100.100.100.200", "169.254.170.2", "169.254.169.254", "metadata.google.internal"])(
+    "classifies metadata host %s",
+    (host) => {
+      expect(isCloudMetadataHost(host)).toBe(true);
     },
   );
   it.each([

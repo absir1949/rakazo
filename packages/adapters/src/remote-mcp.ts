@@ -203,9 +203,13 @@ function assertPrivateAddresses(addresses: ResolvedAddress[]): void {
     throw new Error("Private fetch URL did not resolve to any address");
   }
   if (
-    addresses.some(
-      (entry) => isCloudMetadataAddress(entry.address) || !isPrivateAddress(entry.address),
-    )
+    addresses.some((entry) => {
+      // isCloudMetadataAddress misses some provider endpoints (e.g. ECS task
+      // metadata at 169.254.170.2), so block the whole link-local range too.
+      if (isCloudMetadataAddress(entry.address)) return true;
+      if (entry.address.startsWith("169.254.")) return true;
+      return !isPrivateAddress(entry.address);
+    })
   ) {
     throw new Error("Private fetch URL resolved to a non-private address");
   }

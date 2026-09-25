@@ -39,6 +39,19 @@ export function isPrivateNetworkHost(hostname: string): boolean {
   return false;
 }
 
+/** Provider metadata endpoints that must never become credential targets,
+ * even though they sit inside otherwise-private ranges (CGNAT / link-local). */
+export function isCloudMetadataHost(hostname: string): boolean {
+  const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  return (
+    host === "169.254.169.254" ||
+    host === "169.254.170.2" ||
+    host === "100.100.100.200" ||
+    host === "metadata.google.internal" ||
+    host === "metadata.goog"
+  );
+}
+
 function botSecretOriginSchema(allowPrivateHttpOrigin: boolean) {
   return z
     .string()
@@ -50,6 +63,7 @@ function botSecretOriginSchema(allowPrivateHttpOrigin: boolean) {
           if (url.username || url.password || url.search || url.hash || url.pathname !== "/") {
             return false;
           }
+          if (isCloudMetadataHost(url.hostname)) return false;
           if (url.protocol === "https:") return true;
           return (
             allowPrivateHttpOrigin && url.protocol === "http:" && isPrivateNetworkHost(url.hostname)
