@@ -1,7 +1,7 @@
 import type { BotSecretDestination } from "@rakazo/contracts";
 import type { PrismaClient } from "@rakazo/db";
-import { describe, expect, it, vi } from "vitest";
-import { requestWithBotSecret } from "./bot-secrets.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { normalizeSecretDestination, requestWithBotSecret } from "./bot-secrets.js";
 import { EncryptedSecretStore } from "./secrets.js";
 
 const scope = { userId: "user-1", spaceId: "space-1", botId: "bot-1" };
@@ -164,5 +164,36 @@ describe("authenticated secret requests", () => {
     controller.abort();
     expect(await pending).toMatchObject({ error: expect.any(String) });
     expect(cancel).toHaveBeenCalled();
+  });
+});
+
+describe("normalizeSecretDestination", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  const lanDestination = {
+    name: "hive_api_token",
+    origin: "http://192.168.2.10:8080",
+    auth: { type: "bearer" as const },
+  };
+
+  it("rejects plain-HTTP private origins by default", () => {
+    expect(() => normalizeSecretDestination(lanDestination)).toThrow();
+  });
+
+  it("accepts plain-HTTP private origins when the owner opts in", () => {
+    vi.stubEnv("RAKAZO_SECRETS_ALLOW_PRIVATE_HTTP", "1");
+    expect(normalizeSecretDestination(lanDestination)).toMatchObject({
+      name: "hive_api_token",
+      origin: "http://192.168.2.10:8080",
+    });
+  });
+
+  it("still rejects public HTTP origins when the owner opts in", () => {
+    vi.stubEnv("RAKAZO_SECRETS_ALLOW_PRIVATE_HTTP", "1");
+    expect(() =>
+      normalizeSecretDestination({ ...lanDestination, origin: "http://api.example.test" }),
+    ).toThrow();
   });
 });

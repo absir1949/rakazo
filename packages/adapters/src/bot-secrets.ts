@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { BotSecretDestination, SecretHttpRequest } from "@rakazo/contracts";
+import type { BotSecretDestination } from "@rakazo/contracts";
+import { botSecretDestinationSchema, SecretHttpRequest } from "@rakazo/contracts";
 import type { Prisma, PrismaClient } from "@rakazo/db";
 import { combineSignals, redactConnectorPayload } from "./connector-safety.js";
 import { createSafeRemoteFetch, type RemoteTransportDependencies } from "./remote-mcp.js";
@@ -30,8 +31,15 @@ function credentialHeader(destination: BotSecretDestination, plaintext: string) 
   return { name, value };
 }
 
+/** Owner escape enabling plain-HTTP origins on private LAN hosts (see #907). */
+export function allowPrivateHttpSecretOrigins(): boolean {
+  return process.env.RAKAZO_SECRETS_ALLOW_PRIVATE_HTTP === "1";
+}
+
 export function normalizeSecretDestination(value: unknown): BotSecretDestination {
-  const destination = BotSecretDestination.parse(value);
+  const destination = botSecretDestinationSchema({
+    allowPrivateHttpOrigin: allowPrivateHttpSecretOrigins(),
+  }).parse(value);
   return { ...destination, origin: new URL(destination.origin).origin };
 }
 

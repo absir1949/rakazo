@@ -26,28 +26,51 @@ export const BotSecretAuth = z.discriminatedUnion("type", [
   }),
 ]);
 
-export const BotSecretDestination = z.object({
-  name: BotSecretName,
-  origin: z
+/** Hosts inside a deployment's own network (loopback, RFC1918, CGNAT, .local). */
+export function isPrivateNetworkHost(hostname: string): boolean {
+  const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (host === "localhost" || host === "127.0.0.1" || host === "::1") return true;
+  if (host.endsWith(".local")) return true;
+  if (/^10(?:\.\d{1,3}){3}$/.test(host)) return true;
+  if (/^192\.168(?:\.\d{1,3}){2}$/.test(host)) return true;
+  if (/^172\.(1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2}$/.test(host)) return true;
+  if (/^100\.(6[4-9]|[7-9]\d|1[0-1]\d|12[0-7])(?:\.\d{1,3}){2}$/.test(host)) return true;
+  return false;
+}
+
+function botSecretOriginSchema(allowPrivateHttpOrigin: boolean) {
+  return z
     .string()
     .max(2048)
-    .refine((value) => {
-      try {
-        const url = new URL(value);
-        return (
-          url.protocol === "https:" &&
-          !url.username &&
-          !url.password &&
-          !url.search &&
-          !url.hash &&
-          url.pathname === "/"
-        );
-      } catch {
-        return false;
-      }
-    }, "Expected an HTTPS origin without a path, credentials, query, or fragment"),
-  auth: BotSecretAuth,
-});
+    .refine(
+      (value) => {
+        try {
+          const url = new URL(value);
+          if (url.username || url.password || url.search || url.hash || url.pathname !== "/") {
+            return false;
+          }
+          if (url.protocol === "https:") return true;
+          return (
+            allowPrivateHttpOrigin && url.protocol === "http:" && isPrivateNetworkHost(url.hostname)
+          );
+        } catch {
+          return false;
+        }
+      },
+      allowPrivateHttpOrigin
+        ? "Expected an HTTPS origin, or an HTTP origin on a private LAN host, without a path, credentials, query, or fragment"
+        : "Expected an HTTPS origin without a path, credentials, query, or fragment",
+    );
+}
+
+export function botSecretDestinationSchema(options?: { allowPrivateHttpOrigin?: boolean }) {
+  return z.object({
+    name: BotSecretName,
+    origin: botSecretOriginSchema(options?.allowPrivateHttpOrigin === true),
+    auth: BotSecretAuth,
+  });
+}
+export const BotSecretDestination = botSecretDestinationSchema();
 export type BotSecretDestination = z.infer<typeof BotSecretDestination>;
 
 /** Written atomically with the protected value, distinct from action approval. */
