@@ -7,7 +7,11 @@ import {
 } from "@rakazo/contracts";
 import type { Prisma, PrismaClient } from "@rakazo/db";
 import { combineSignals, redactConnectorPayload } from "./connector-safety.js";
-import { createSafeRemoteFetch, type RemoteTransportDependencies } from "./remote-mcp.js";
+import {
+  createPrivateNetworkFetch,
+  createSafeRemoteFetch,
+  type RemoteTransportDependencies,
+} from "./remote-mcp.js";
 import type { EncryptedSecretStore } from "./secrets.js";
 import { readBodyCapped, withAbort } from "./web-ssrf.js";
 
@@ -164,13 +168,16 @@ export async function requestWithBotSecret(input: {
   // The safe fetch refuses plain-HTTP and private hosts outright. A credential
   // saved under the owner's private-HTTP opt-in was validated against exactly
   // those rules at save time, and the request URL is pinned to its origin, so
-  // deliver it directly with the same no-redirect boundary instead.
+  // deliver it through the inverted transport instead — it re-checks that every
+  // resolved address is private (metadata endpoints stay blocked) and pins the
+  // connection to the validated answer.
   const privateHttpDestination =
     allowPrivateHttpSecretOrigins() &&
     url.protocol === "http:" &&
     isPrivateNetworkHost(url.hostname);
-  const safeFetch = createSafeRemoteFetch(input.remote?.fetch, input.remote?.resolveHostname);
-  const fetch = privateHttpDestination ? (input.remote?.fetch ?? globalThis.fetch) : safeFetch;
+  const fetch = privateHttpDestination
+    ? createPrivateNetworkFetch(input.remote?.fetch, input.remote?.resolveHostname)
+    : createSafeRemoteFetch(input.remote?.fetch, input.remote?.resolveHostname);
   try {
     headers.set(headerName, headerValue);
     const response = await withAbort(
@@ -202,6 +209,6 @@ export async function requestWithBotSecret(input: {
     return { error: "Authenticated request failed. Check the destination and credential." };
   } finally {
     controller.abort();
-    await withAbort(safeFetch.close(), AbortSignal.timeout(1000)).catch(() => undefined);
+    await withAbort(fetch.close(), AbortSignal.timeout(1000)).catch(() => undefined);
   }
 }

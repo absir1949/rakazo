@@ -29,7 +29,8 @@ export const BotSecretAuth = z.discriminatedUnion("type", [
 /** Hosts inside a deployment's own network (loopback, RFC1918, CGNAT, .local). */
 export function isPrivateNetworkHost(hostname: string): boolean {
   const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  if (host === "localhost" || host === "127.0.0.1" || host === "::1") return true;
+  if (host === "localhost" || host === "::1") return true;
+  if (/^127(?:\.\d{1,3}){3}$/.test(host)) return true;
   if (host.endsWith(".local")) return true;
   if (/^10(?:\.\d{1,3}){3}$/.test(host)) return true;
   if (/^192\.168(?:\.\d{1,3}){2}$/.test(host)) return true;
@@ -73,8 +74,9 @@ export function botSecretDestinationSchema(options?: { allowPrivateHttpOrigin?: 
 export const BotSecretDestination = botSecretDestinationSchema();
 export type BotSecretDestination = z.infer<typeof BotSecretDestination>;
 
-/** Written atomically with the protected value, distinct from action approval. */
-export const BotSecretSubmission = z.object({ credentialSaved: BotSecretDestination });
+export function botSecretSubmissionSchema(options?: { allowPrivateHttpOrigin?: boolean }) {
+  return z.object({ credentialSaved: botSecretDestinationSchema(options) });
+}
 
 export const SecretHttpRequest = z
   .object({

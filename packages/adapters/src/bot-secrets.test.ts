@@ -196,7 +196,10 @@ describe("authenticated secret requests", () => {
       scope,
       request: { name: "hive_api_token", url: "http://192.168.2.10:8080/v1/items" },
       signal: new AbortController().signal,
-      remote: { fetch, resolveHostname: publicResolver },
+      remote: {
+        fetch,
+        resolveHostname: async () => [{ address: "192.168.2.10", family: 4 as const }],
+      },
       registerRedactions: vi.fn(),
     };
     expect(await requestWithBotSecret(input)).toEqual({
@@ -209,6 +212,40 @@ describe("authenticated secret requests", () => {
     expect(String(url)).toBe("http://192.168.2.10:8080/v1/items");
     expect(init?.redirect).toBe("manual");
     expect(new Headers(init?.headers).get("Authorization")).toBe(`Bearer ${secret}`);
+  });
+
+  it("refuses an opted-in private destination that resolves publicly", async () => {
+    vi.stubEnv("RAKAZO_SECRETS_ALLOW_PRIVATE_HTTP", "1");
+    const encrypted = await secretStore.put(
+      secret,
+      { ...scope, operationId: "test", traceId: "test", signal: new AbortController().signal },
+      "secret-3",
+    );
+    const row = {
+      ...scope,
+      name: "hive_api_token",
+      origin: "http://nas.local:8080",
+      auth: { type: "bearer" as const },
+      ...encrypted,
+    };
+    const findFirst = vi.fn(async () => row);
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => Response.json({ ok: true }));
+    const input = {
+      prisma: { botSecret: { findFirst } } as unknown as PrismaClient,
+      secretStore,
+      scope,
+      request: { name: "hive_api_token", url: "http://nas.local:8080/v1/items" },
+      signal: new AbortController().signal,
+      remote: {
+        fetch,
+        resolveHostname: async () => [{ address: "203.0.113.10", family: 4 as const }],
+      },
+      registerRedactions: vi.fn(),
+    };
+    expect(await requestWithBotSecret(input)).toEqual({
+      error: expect.stringContaining("Authenticated request failed"),
+    });
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 
