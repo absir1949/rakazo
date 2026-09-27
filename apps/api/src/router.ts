@@ -161,7 +161,11 @@ import {
   toComputerStatus,
 } from "./computer-status.js";
 import { searchIntegrationCatalog } from "./integration-catalog.js";
-import { resolveMcpApprovalCards, revertConnectedMcpApprovals } from "./mcp-approval.js";
+import {
+  dismissMcpServerApprovals,
+  resolveMcpApprovalCards,
+  revertConnectedMcpApprovals,
+} from "./mcp-approval.js";
 import { buildMcpUpdateMaterial } from "./mcp-material.js";
 import {
   disconnectMemoryProvider,
@@ -3160,28 +3164,14 @@ export function createRouter(deps: RouterDeps) {
           });
           if (!server) throw new IsolationError();
           // Assignments cascade; the encrypted credential must go with the server.
-          // Connected cards are repainted first so they do not outlive the server.
+          // Cards are closed first, including ones that were never assigned.
           const seqs = await deps.prisma.$transaction(async (tx) => {
-            const assigned = await tx.botMcpServer.findMany({
-              where: {
-                serverId: server.id,
-                spaceId: context.actor.spaceId,
-                userId: context.actor.userId,
-              },
-              select: { botId: true },
-            });
-            const painted = (
-              await Promise.all(
-                assigned.map((row) =>
-                  revertConnectedMcpApprovals(
-                    onboardingDeps,
-                    context.actor,
-                    { botId: row.botId, serverId: server.id, status: "dismissed" },
-                    tx,
-                  ),
-                ),
-              )
-            ).flat();
+            const painted = await dismissMcpServerApprovals(
+              onboardingDeps,
+              context.actor,
+              server.id,
+              tx,
+            );
             await tx.mcpServer.delete({ where: { id: server.id } });
             if (server.secretId) {
               await tx.secret.deleteMany({

@@ -41,16 +41,8 @@ async function threadsForDecision(
   deps: McpApprovalDeps,
   actor: Actor,
   input: McpApprovalResolution,
-): Promise<{ id: string }[]> {
-  if (!input.threadId) {
-    try {
-      const { thread } = await requireBotThread(deps, actor, input.botId);
-      return [{ id: thread.id }];
-    } catch (error) {
-      if (error instanceof IsolationError) return [];
-      throw error;
-    }
-  }
+): Promise<ApprovalThread[]> {
+  if (!input.threadId) return threadsForBot(deps.prisma, actor, input.botId);
   const member = await deps.prisma.thread.findMany({
     where: {
       id: input.threadId,
@@ -58,7 +50,7 @@ async function threadsForDecision(
       userId: actor.userId,
       OR: [{ botId: input.botId }, { group: { members: { some: { botId: input.botId } } } }],
     },
-    select: { id: true },
+    select: { id: true, botId: true },
   });
   if (member.length > 0) return member;
   // A bot removed from a group leaves its card behind. The bot still has to
@@ -76,31 +68,48 @@ async function threadsForDecision(
       userId: actor.userId,
       groupId: { not: null },
     },
-    select: { id: true },
+    select: { id: true, botId: true },
   });
 }
+
+type ApprovalThread = { id: string; botId: string | null };
 
 async function threadsForBot(
   db: Prisma.TransactionClient | PrismaClient,
   actor: Actor,
   botId: string,
-): Promise<{ id: string }[]> {
+): Promise<ApprovalThread[]> {
   return db.thread.findMany({
     where: {
       spaceId: actor.spaceId,
       userId: actor.userId,
-      OR: [{ botId }, { groupId: { not: null } }],
+      OR: [{ botId }, { groupId: { not: null }, messages: { some: { botId } } }],
     },
-    select: { id: true },
+    select: { id: true, botId: true },
+  });
+}
+
+async function threadsForActor(
+  db: Prisma.TransactionClient | PrismaClient,
+  actor: Actor,
+): Promise<ApprovalThread[]> {
+  return db.thread.findMany({
+    where: {
+      spaceId: actor.spaceId,
+      userId: actor.userId,
+      OR: [{ botId: { not: null } }, { groupId: { not: null } }],
+    },
+    select: { id: true, botId: true },
   });
 }
 
 async function rewriteCards(
   tx: Prisma.TransactionClient,
   actor: Actor,
-  threads: { id: string }[],
-  input: { botId: string; serverId: string; status: ApprovalBlock["status"] },
+  threads: ApprovalThread[],
+  input: { botId?: string; serverId: string; status: ApprovalBlock["status"] },
   selectable: (block: ApprovalBlock) => boolean,
+  scope: "bot" | "server",
 ): Promise<{ seqs: ThreadSeq[]; flipped: number; dismissed: boolean; connected: boolean }> {
   const seqs: ThreadSeq[] = [];
   let flipped = 0;
@@ -109,11 +118,12 @@ async function rewriteCards(
   for (const thread of threads) {
     const messages = await tx.message.findMany({
       where: { threadId: thread.id },
-      select: { id: true, blocks: true },
+      select: { id: true, botId: true, blocks: true },
       orderBy: { createdAt: "desc" },
       take: 100,
     });
     for (const message of messages) {
+      if (scope === "bot" && message.botId && message.botId !== input.botId) continue;
       const blocks = message.blocks as MessageBlock[];
       const matching = blocks.filter((block): block is ApprovalBlock =>
         isApproval(block, input.serverId),
@@ -130,15 +140,17 @@ async function rewriteCards(
           : block,
       );
       await tx.message.update({ where: { id: message.id }, data: { blocks: next } });
+      flipped += 1;
+      const eventBotId = message.botId ?? thread.botId ?? input.botId;
+      if (!eventBotId) continue;
       const event = await appendEventInTransaction(tx, {
         spaceId: actor.spaceId,
         threadId: thread.id,
-        botId: input.botId,
+        botId: eventBotId,
         type: "thread.message.updated",
         payload: { messageId: message.id, role: "bot", blocks: next },
       });
       seqs.push({ threadId: thread.id, seq: event.seq });
-      flipped += 1;
     }
   }
   return { seqs, flipped, dismissed, connected };
@@ -159,7 +171,11 @@ export async function resolveMcpApprovalCards<T>(
   const committed = await withTransactionRetry(() =>
     deps.prisma.$transaction(
       async (tx) => {
-        const painted = await rewriteCards(tx, actor, threads, input, isOpen);
+        const selectable =
+          input.threadId === undefined
+            ? (block: ApprovalBlock) => block.status !== "connected"
+            : isOpen;
+        const painted = await rewriteCards(tx, actor, threads, input, selectable, "bot");
         // Only a card decision can lose to a dismissal that already committed.
         // Settings and onboarding approve without a threadId and must still assign.
         const dismissalWon =
@@ -189,10 +205,38 @@ export async function revertConnectedMcpApprovals(
 ): Promise<ThreadSeq[]> {
   const selectable = (block: ApprovalBlock) =>
     input.status === "dismissed" ? block.status !== "dismissed" : block.status === "connected";
-  const paint = (client: Prisma.TransactionClient, threads: { id: string }[]) =>
-    rewriteCards(client, actor, threads, input, selectable).then((painted) => painted.seqs);
+  const paint = (client: Prisma.TransactionClient, threads: ApprovalThread[]) =>
+    rewriteCards(client, actor, threads, input, selectable, "bot").then((painted) => painted.seqs);
   if (tx) return paint(tx, await threadsForBot(tx, actor, input.botId));
   const threads = await threadsForBot(deps.prisma, actor, input.botId);
+  const seqs = await withTransactionRetry(() =>
+    deps.prisma.$transaction((client) => paint(client, threads), {
+      isolationLevel: "Serializable",
+    }),
+  );
+  for (const event of seqs) await deps.events.notify(event.threadId, event.seq);
+  return seqs;
+}
+
+/** Deleting a server closes every approval card for it, including cards that
+    were never assigned. */
+export async function dismissMcpServerApprovals(
+  deps: McpApprovalDeps,
+  actor: Actor,
+  serverId: string,
+  tx?: Prisma.TransactionClient,
+): Promise<ThreadSeq[]> {
+  const paint = (client: Prisma.TransactionClient, threads: ApprovalThread[]) =>
+    rewriteCards(
+      client,
+      actor,
+      threads,
+      { serverId, status: "dismissed" },
+      (block) => block.status !== "dismissed",
+      "server",
+    ).then((painted) => painted.seqs);
+  if (tx) return paint(tx, await threadsForActor(tx, actor));
+  const threads = await threadsForActor(deps.prisma, actor);
   const seqs = await withTransactionRetry(() =>
     deps.prisma.$transaction((client) => paint(client, threads), {
       isolationLevel: "Serializable",

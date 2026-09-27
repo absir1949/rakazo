@@ -358,7 +358,7 @@ describe("MCP server deletion", () => {
         delete: deleteServer,
       },
       secret: { deleteMany: deleteSecrets },
-      botMcpServer: { findMany: vi.fn().mockResolvedValue([]) },
+      thread: { findMany: vi.fn().mockResolvedValue([]) },
       $transaction: vi.fn(async (run: (tx: unknown) => Promise<unknown>) => run(prisma)),
     } as unknown as PrismaClient;
     const deps = {

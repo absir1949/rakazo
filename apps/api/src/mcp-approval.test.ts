@@ -1,6 +1,10 @@
 import type * as db from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
-import { resolveMcpApprovalCards, revertConnectedMcpApprovals } from "./mcp-approval.js";
+import {
+  dismissMcpServerApprovals,
+  resolveMcpApprovalCards,
+  revertConnectedMcpApprovals,
+} from "./mcp-approval.js";
 
 vi.mock("@rakazo/db", async (original) => ({
   ...(await original<typeof db>()),
@@ -10,7 +14,7 @@ vi.mock("@rakazo/db", async (original) => ({
 function fixture(blocks: unknown[]) {
   const tx = {
     message: {
-      findMany: vi.fn(async () => [{ id: "card-message", blocks }]),
+      findMany: vi.fn(async () => [{ id: "card-message", botId: "bot", blocks }]),
       update: vi.fn(),
     },
   };
@@ -45,6 +49,7 @@ describe("resolveMcpApprovalCards", () => {
       botId: "bot",
       serverId: "srv-a",
       status: "connected",
+      threadId: "group-thread",
     });
     expect(tx.message.update).toHaveBeenCalledWith({
       where: { id: "card-message" },
@@ -76,7 +81,7 @@ describe("resolveMcpApprovalCards", () => {
         userId: "user",
         OR: [{ botId: "bot" }, { group: { members: { some: { botId: "bot" } } } }],
       },
-      select: { id: true },
+      select: { id: true, botId: true },
     });
     expect(tx.message.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { threadId: "group-thread" } }),
@@ -108,7 +113,7 @@ describe("resolveMcpApprovalCards", () => {
         userId: "user",
         groupId: { not: null },
       },
-      select: { id: true },
+      select: { id: true, botId: true },
     });
     expect(deps.prisma.bot.findFirst).toHaveBeenCalled();
     expect(tx.message.update).toHaveBeenCalledWith({
@@ -174,7 +179,10 @@ describe("resolveMcpApprovalCards", () => {
       ),
     ).resolves.toBe("saved");
     expect(effect).toHaveBeenCalledWith(tx, { assign: true });
-    expect(tx.message.update).not.toHaveBeenCalled();
+    expect(tx.message.update).toHaveBeenCalledWith({
+      where: { id: "card-message" },
+      data: { blocks: [{ ...blocks[0], status: "connected" }] },
+    });
   });
 
   it("returns a connected card to pending when the assignment is removed", async () => {
@@ -193,9 +201,9 @@ describe("resolveMcpApprovalCards", () => {
       where: {
         spaceId: "space",
         userId: "user",
-        OR: [{ botId: "bot" }, { groupId: { not: null } }],
+        OR: [{ botId: "bot" }, { groupId: { not: null }, messages: { some: { botId: "bot" } } }],
       },
-      select: { id: true },
+      select: { id: true, botId: true },
     });
     expect(tx.message.update).toHaveBeenCalledWith({
       where: { id: "card-message" },
@@ -212,11 +220,7 @@ describe("resolveMcpApprovalCards", () => {
       { kind: "mcp_approval", name: "C", serverId: "srv-a", status: "dismissed" },
     ];
     const { deps, actor, tx } = fixture(blocks);
-    await revertConnectedMcpApprovals(deps, actor, {
-      botId: "bot",
-      serverId: "srv-a",
-      status: "dismissed",
-    });
+    await dismissMcpServerApprovals(deps, actor, "srv-a");
     expect(tx.message.update).toHaveBeenCalledWith({
       where: { id: "card-message" },
       data: {
@@ -227,6 +231,18 @@ describe("resolveMcpApprovalCards", () => {
         ],
       },
     });
+  });
+
+  it("does not reset another bot's card in a shared group", async () => {
+    const blocks = [{ kind: "mcp_approval", name: "A", serverId: "srv-a", status: "connected" }];
+    const { deps, actor, tx } = fixture(blocks);
+    tx.message.findMany = vi.fn(async () => [{ id: "card-message", botId: "other-bot", blocks }]);
+    await revertConnectedMcpApprovals(deps, actor, {
+      botId: "bot",
+      serverId: "srv-a",
+      status: "pending",
+    });
+    expect(tx.message.update).not.toHaveBeenCalled();
   });
 
   it("does not repaint another bot's direct chat when the bot has left", async () => {
