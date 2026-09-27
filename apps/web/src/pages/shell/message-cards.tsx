@@ -331,16 +331,20 @@ type McpApprovalState = "pending" | "connecting" | "connected" | "dismissed";
  * thread remounts. */
 export function McpApprovalCard({
   botId,
+  threadId,
   block,
 }: {
   botId: string | undefined;
+  threadId: string | undefined;
   block: Extract<MessageBlock, { kind: "mcp_approval" }>;
 }) {
   const { t } = useLingui();
   const { name, serverId, transport, endpoint, needsOAuth, status: savedStatus } = block;
   const [localStatus, setLocalStatus] = useState<McpApprovalState>("pending");
   const [error, setError] = useState<string | null>(null);
-  const state = savedStatus === "pending" ? localStatus : savedStatus;
+  // Blocks saved before the status field existed have none and count as pending.
+  const state =
+    savedStatus === "connected" || savedStatus === "dismissed" ? savedStatus : localStatus;
 
   async function authorize() {
     if (!botId) {
@@ -357,7 +361,7 @@ export function McpApprovalCard({
           return;
         }
       }
-      await rpc.mcp.assignments.approve({ botId, serverId });
+      await rpc.mcp.assignments.approve({ botId, serverId, threadId });
       setLocalStatus("connected");
     } catch (err) {
       setError(err instanceof Error ? err.message : t`Could not approve this server`);
@@ -366,9 +370,17 @@ export function McpApprovalCard({
   }
 
   async function dismiss() {
-    setLocalStatus("dismissed");
-    if (botId) {
-      await rpc.mcp.assignments.dismiss({ botId, serverId }).catch(() => undefined);
+    setError(null);
+    if (!botId) {
+      setLocalStatus("dismissed");
+      return;
+    }
+    try {
+      await rpc.mcp.assignments.dismiss({ botId, serverId, threadId });
+      setLocalStatus("dismissed");
+    } catch (err) {
+      setLocalStatus("pending");
+      setError(err instanceof Error ? err.message : t`Could not dismiss this server`);
     }
   }
 

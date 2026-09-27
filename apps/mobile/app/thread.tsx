@@ -2406,6 +2406,7 @@ const MessageBubble = memo(function MessageBubble({
           <McpApprovalCard
             key={block.serverId}
             botId={cardBotId}
+            threadId={message.threadId}
             block={block}
             accessibilityActions={actionProps.accessibilityActions}
             onAccessibilityAction={actionProps.onAccessibilityAction}
@@ -2677,6 +2678,7 @@ const MessageBubble = memo(function MessageBubble({
           <McpApprovalCard
             key={block.serverId}
             botId={cardBotId}
+            threadId={message.threadId}
             block={block}
             accessibilityActions={actionProps.accessibilityActions}
             onAccessibilityAction={actionProps.onAccessibilityAction}
@@ -2769,6 +2771,7 @@ const MessageBubble = memo(function MessageBubble({
           <McpApprovalCard
             key={block.serverId}
             botId={cardBotId}
+            threadId={message.threadId}
             block={block}
             accessibilityActions={actionProps.accessibilityActions}
             onAccessibilityAction={actionProps.onAccessibilityAction}
@@ -2928,6 +2931,7 @@ const MessageBubble = memo(function MessageBubble({
           <McpApprovalCard
             key={block.serverId}
             botId={cardBotId}
+            threadId={message.threadId}
             block={block}
             accessibilityActions={actionProps.accessibilityActions}
             onAccessibilityAction={actionProps.onAccessibilityAction}

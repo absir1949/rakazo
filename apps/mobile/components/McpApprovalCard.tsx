@@ -1,88 +1,89 @@
 import type { MessageBlock } from "@rakazo/contracts";
 import { useState } from "react";
-import { Alert, Pressable, Text, View, type ViewProps } from "react-native";
+import type { ViewProps } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { rpc } from "../lib/api";
 import { useI18n } from "../lib/i18n";
 import { native, useMobileTokens } from "../lib/native";
 
+const styles = StyleSheet.create({
+  actions: { flexDirection: "row", gap: 8 },
+  badge: { alignItems: "center", borderRadius: 8, height: 28, justifyContent: "center", width: 28 },
+  badgeText: { fontSize: 12, fontWeight: "600" },
+  button: {
+    alignItems: "center",
+    borderRadius: 999,
+    justifyContent: "center",
+    minHeight: 36,
+    paddingHorizontal: 14,
+  },
+  card: { borderRadius: 18, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 14, gap: 8 },
+  description: { fontSize: 13.5, opacity: 0.75 },
+  header: { alignItems: "center", flexDirection: "row", gap: 12 },
+  headline: { flex: 1, gap: 2 },
+  summary: { fontSize: 13.5 },
+  title: { fontSize: 15, fontWeight: "600" },
+});
+
 export function McpApprovalCard({
   botId,
+  threadId,
   block,
   accessibilityActions,
   onAccessibilityAction,
 }: {
   botId: string;
+  threadId?: string;
   block: Extract<MessageBlock, { kind: "mcp_approval" }>;
   accessibilityActions?: ViewProps["accessibilityActions"];
   onAccessibilityAction?: ViewProps["onAccessibilityAction"];
 }) {
   const { t } = useI18n();
   const tokens = useMobileTokens();
-  const [pendingAction, setPendingAction] = useState<string | null>(null);
-  const status = block.status;
+  const [localStatus, setLocalStatus] = useState<"pending" | "connected" | "dismissed">("pending");
+  const status = block.status && block.status !== "pending" ? block.status : localStatus;
   const summary = block.endpoint ?? `stdio · ${block.transport}`;
-  const decided = status !== "pending";
 
   async function submit(action: "approve" | "dismiss") {
-    if (decided || pendingAction !== null) return;
-    setPendingAction(action);
+    if (status !== "pending") return;
     try {
       if (action === "approve") {
-        await rpc("mcp/assignments/approve", { botId, serverId: block.serverId });
+        await rpc("mcp/assignments/approve", { botId, serverId: block.serverId, threadId });
       } else {
-        await rpc("mcp/assignments/dismiss", { botId, serverId: block.serverId });
+        await rpc("mcp/assignments/dismiss", { botId, serverId: block.serverId, threadId });
       }
+      setLocalStatus(action === "approve" ? "connected" : "dismissed");
     } catch (reason) {
       Alert.alert(
-        t("Could not approve this server"),
+        action === "approve" ? t("Could not approve this server") : t("Could not complete action"),
         reason instanceof Error ? reason.message : t("Please try again."),
       );
-    } finally {
-      setPendingAction(null);
     }
   }
 
   return (
     <View
       accessibilityLabel={t("Connect MCP server {name}", { name: block.name })}
-      style={{
-        width: "90%",
-        borderRadius: 18,
-        borderWidth: 1,
-        borderColor: tokens.border,
-        backgroundColor: tokens.card,
-        paddingHorizontal: 16,
-        paddingVertical: 14,
-        gap: 8,
-      }}
+      style={[styles.card, { borderColor: tokens.border, backgroundColor: tokens.card }]}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-        <View
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 8,
-            backgroundColor: tokens.muted,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Text style={{ color: tokens.foreground, fontSize: 12, fontWeight: "600" }}>M</Text>
+      <View style={styles.header}>
+        <View style={[styles.badge, { backgroundColor: tokens.muted }]}>
+          <Text style={[styles.badgeText, { color: tokens.foreground }]}>M</Text>
         </View>
-        <View style={{ flex: 1, gap: 2 }}>
+        <View style={styles.headline}>
           <Text
             accessibilityActions={accessibilityActions}
             onAccessibilityAction={onAccessibilityAction}
-            style={{ color: tokens.foreground, fontSize: 15, fontWeight: "600" }}
+            style={[styles.title, { color: tokens.foreground }]}
           >
             {t("Connect MCP server {name}", { name: block.name })}
           </Text>
-          <Text style={{ color: tokens.mutedForeground, fontSize: 13.5 }} numberOfLines={2}>
+          <Text style={[styles.summary, { color: tokens.mutedForeground }]} numberOfLines={2}>
             {summary}
           </Text>
         </View>
       </View>
-      {decided ? (
+      {status !== "pending" ? (
         <Text
           style={{
             color: status === "connected" ? tokens.success : tokens.mutedForeground,
@@ -95,26 +96,18 @@ export function McpApprovalCard({
         </Text>
       ) : (
         <>
-          <Text style={{ color: tokens.foreground, opacity: 0.75, fontSize: 13.5 }}>
+          <Text style={[styles.description, { color: tokens.foreground }]}>
             {block.needsOAuth
               ? t("Finish MCP authorization in the web app.")
               : t("Approve this server to let your agent use its tools.")}
           </Text>
-          <View style={{ flexDirection: "row", gap: 8 }}>
+          <View style={styles.actions}>
             {!block.needsOAuth ? (
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={t("Approve")}
-                disabled={pendingAction !== null}
                 onPress={() => void submit("approve")}
-                style={{
-                  minHeight: 36,
-                  paddingHorizontal: 14,
-                  borderRadius: 999,
-                  backgroundColor: native.fillPressed,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
+                style={[styles.button, { backgroundColor: native.fillPressed }]}
               >
                 <Text style={{ color: native.label, fontSize: 14, fontWeight: "600" }}>
                   {t("Approve")}
@@ -124,17 +117,8 @@ export function McpApprovalCard({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={t("Not now")}
-              disabled={pendingAction !== null}
               onPress={() => void submit("dismiss")}
-              style={{
-                minHeight: 36,
-                paddingHorizontal: 14,
-                borderRadius: 999,
-                borderWidth: 1,
-                borderColor: tokens.border,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
+              style={[styles.button, { borderColor: tokens.border }]}
             >
               <Text style={{ color: tokens.foreground, fontSize: 14 }}>{t("Not now")}</Text>
             </Pressable>

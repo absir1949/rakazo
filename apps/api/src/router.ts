@@ -3244,23 +3244,23 @@ export function createRouter(deps: RouterDeps) {
               update: {},
             });
           });
-          await resolveMcpApprovalCards(
-            onboardingDeps,
-            context.actor,
-            input.botId,
-            input.serverId,
-            "connected",
-          );
+          // The assignment is saved; the card flip is best effort so a failed
+          // repaint cannot report an approved server as rejected.
+          await resolveMcpApprovalCards(onboardingDeps, context.actor, {
+            botId: input.botId,
+            serverId: input.serverId,
+            status: "connected",
+            threadId: input.threadId,
+          }).catch(() => undefined);
           return mcpAssignmentDto(row);
         }),
         dismiss: authed.mcp.assignments.dismiss.handler(async ({ context, input }) => {
-          await resolveMcpApprovalCards(
-            onboardingDeps,
-            context.actor,
-            input.botId,
-            input.serverId,
-            "dismissed",
-          );
+          await resolveMcpApprovalCards(onboardingDeps, context.actor, {
+            botId: input.botId,
+            serverId: input.serverId,
+            status: "dismissed",
+            threadId: input.threadId,
+          });
           return { ok: true as const };
         }),
         replace: authed.mcp.assignments.replace.handler(async ({ context, input }) => {
