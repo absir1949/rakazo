@@ -211,7 +211,7 @@ async function closeServerCards(
   const messages = await client.message.findMany({
     where: {
       thread: { spaceId: actor.spaceId, userId: actor.userId },
-      blocks: { string_contains: serverId },
+      blocks: { array_contains: [{ kind: "mcp_approval", serverId }] },
     },
     select: {
       id: true,
