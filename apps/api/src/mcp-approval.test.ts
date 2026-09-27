@@ -87,6 +87,26 @@ describe("resolveMcpApprovalCards", () => {
     });
   });
 
+  it("falls back to owner scope for chats the bot was removed from", async () => {
+    const blocks = [{ kind: "mcp_approval", name: "A", serverId: "srv-a", status: "pending" }];
+    const { deps, actor, tx } = fixture(blocks);
+    deps.prisma.thread.findMany = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: "group-thread" }]);
+    await resolveMcpApprovalCards(deps, actor, {
+      botId: "bot",
+      serverId: "srv-a",
+      status: "connected",
+      threadId: "group-thread",
+    });
+    expect(deps.prisma.thread.findMany).toHaveBeenCalledTimes(2);
+    expect(tx.message.update).toHaveBeenCalledWith({
+      where: { id: "card-message" },
+      data: { blocks: [{ ...blocks[0], status: "connected" }] },
+    });
+  });
+
   it("leaves untouched messages alone when nothing matches", async () => {
     const blocks = [{ kind: "mcp_approval", name: "B", serverId: "srv-b", status: "pending" }];
     const { deps, actor, tx } = fixture(blocks);

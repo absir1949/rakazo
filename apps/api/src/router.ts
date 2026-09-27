@@ -3255,6 +3255,16 @@ export function createRouter(deps: RouterDeps) {
           return mcpAssignmentDto(row);
         }),
         dismiss: authed.mcp.assignments.dismiss.handler(async ({ context, input }) => {
+          // Not now also undoes an approval that just landed, so the card and
+          // the assignment cannot disagree after a changed mind.
+          await deps.prisma.botMcpServer.deleteMany({
+            where: {
+              botId: input.botId,
+              serverId: input.serverId,
+              spaceId: context.actor.spaceId,
+              userId: context.actor.userId,
+            },
+          });
           await resolveMcpApprovalCards(onboardingDeps, context.actor, {
             botId: input.botId,
             serverId: input.serverId,

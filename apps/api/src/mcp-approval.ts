@@ -32,9 +32,10 @@ export async function resolveMcpApprovalCards(
   input: McpApprovalResolution,
 ): Promise<void> {
   // The explicit thread must belong to this bot: its own chat, or a group it
-  // is a member of. Otherwise a stale or forged threadId could resolve
-  // another bot's cards.
-  const threads = input.threadId
+  // is a member of. A bot removed from a group leaves its card behind, so when
+  // the bot-scoped lookup comes up empty the space owner may still resolve
+  // that orphaned card: every bot and card in the space belongs to the actor.
+  let threads = input.threadId
     ? await deps.prisma.thread.findMany({
         where: {
           id: input.threadId,
@@ -45,6 +46,12 @@ export async function resolveMcpApprovalCards(
         select: { id: true },
       })
     : [await requireBotThread(deps, actor, input.botId)].map(({ thread }) => ({ id: thread.id }));
+  if (input.threadId && threads.length === 0) {
+    threads = await deps.prisma.thread.findMany({
+      where: { id: input.threadId, spaceId: actor.spaceId, userId: actor.userId },
+      select: { id: true },
+    });
+  }
   type PendingApproval = Extract<MessageBlock, { kind: "mcp_approval" }>;
   const matches = (block: MessageBlock): block is PendingApproval =>
     block.kind === "mcp_approval" &&

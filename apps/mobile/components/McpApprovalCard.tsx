@@ -60,6 +60,8 @@ export function McpApprovalCard({
         action === "approve" ? t("Could not approve this server") : t("Could not complete action"),
         reason instanceof Error ? reason.message : t("Please try again."),
       );
+    } finally {
+      setPendingAction(null);
     }
   }
 
