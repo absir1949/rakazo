@@ -70,7 +70,12 @@ describe("resolveMcpApprovalCards", () => {
       threadId: "group-thread",
     });
     expect(deps.prisma.thread.findMany).toHaveBeenCalledWith({
-      where: { id: "group-thread", spaceId: "space", userId: "user" },
+      where: {
+        id: "group-thread",
+        spaceId: "space",
+        userId: "user",
+        OR: [{ botId: "bot" }, { group: { members: { some: { botId: "bot" } } } }],
+      },
       select: { id: true },
     });
     expect(tx.message.findMany).toHaveBeenCalledWith(

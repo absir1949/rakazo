@@ -342,15 +342,17 @@ export function McpApprovalCard({
   const { name, serverId, transport, endpoint, needsOAuth, status: savedStatus } = block;
   const [localStatus, setLocalStatus] = useState<McpApprovalState>("pending");
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   // Blocks saved before the status field existed have none and count as pending.
   const state =
     savedStatus === "connected" || savedStatus === "dismissed" ? savedStatus : localStatus;
 
   async function authorize() {
-    if (!botId) {
-      setError(t`This server cannot be assigned without a bot.`);
+    if (!botId || busy) {
+      if (!botId) setError(t`This server cannot be assigned without a bot.`);
       return;
     }
+    setBusy(true);
     setLocalStatus("connecting");
     setError(null);
     try {
@@ -366,21 +368,25 @@ export function McpApprovalCard({
     } catch (err) {
       setError(err instanceof Error ? err.message : t`Could not approve this server`);
       setLocalStatus("pending");
+    } finally {
+      setBusy(false);
     }
   }
 
   async function dismiss() {
+    if (busy) return;
+    setBusy(true);
     setError(null);
-    if (!botId) {
-      setLocalStatus("dismissed");
-      return;
-    }
     try {
-      await rpc.mcp.assignments.dismiss({ botId, serverId, threadId });
+      if (botId) {
+        await rpc.mcp.assignments.dismiss({ botId, serverId, threadId });
+      }
       setLocalStatus("dismissed");
     } catch (err) {
       setLocalStatus("pending");
       setError(err instanceof Error ? err.message : t`Could not dismiss this server`);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -407,12 +413,17 @@ export function McpApprovalCard({
           <div className="mt-3 flex gap-2">
             <Button
               className="rounded-full"
-              disabled={state === "connecting"}
+              disabled={state !== "pending" || busy}
               onClick={() => void authorize()}
             >
               {state === "connecting" ? t`Connecting…` : needsOAuth ? t`Authorize` : t`Approve`}
             </Button>
-            <Button variant="secondary" className="rounded-full" onClick={() => void dismiss()}>
+            <Button
+              variant="secondary"
+              className="rounded-full"
+              disabled={state !== "pending" || busy}
+              onClick={() => void dismiss()}
+            >
               <Trans>Not now</Trans>
             </Button>
           </div>

@@ -41,11 +41,13 @@ export function McpApprovalCard({
   const { t } = useI18n();
   const tokens = useMobileTokens();
   const [localStatus, setLocalStatus] = useState<"pending" | "connected" | "dismissed">("pending");
+  const [pendingAction, setPendingAction] = useState<"approve" | "dismiss" | null>(null);
   const status = block.status && block.status !== "pending" ? block.status : localStatus;
   const summary = block.endpoint ?? `stdio · ${block.transport}`;
 
   async function submit(action: "approve" | "dismiss") {
-    if (status !== "pending") return;
+    if (status !== "pending" || pendingAction !== null) return;
+    setPendingAction(action);
     try {
       if (action === "approve") {
         await rpc("mcp/assignments/approve", { botId, serverId: block.serverId, threadId });
@@ -106,8 +108,15 @@ export function McpApprovalCard({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={t("Approve")}
+                disabled={pendingAction !== null}
                 onPress={() => void submit("approve")}
-                style={[styles.button, { backgroundColor: native.fillPressed }]}
+                style={[
+                  styles.button,
+                  {
+                    backgroundColor: native.fillPressed,
+                    opacity: pendingAction !== null ? 0.6 : 1,
+                  },
+                ]}
               >
                 <Text style={{ color: native.label, fontSize: 14, fontWeight: "600" }}>
                   {t("Approve")}
@@ -117,8 +126,12 @@ export function McpApprovalCard({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={t("Not now")}
+              disabled={pendingAction !== null}
               onPress={() => void submit("dismiss")}
-              style={[styles.button, { borderColor: tokens.border }]}
+              style={[
+                styles.button,
+                { borderColor: tokens.border, opacity: pendingAction !== null ? 0.6 : 1 },
+              ]}
             >
               <Text style={{ color: tokens.foreground, fontSize: 14 }}>{t("Not now")}</Text>
             </Pressable>

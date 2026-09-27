@@ -31,9 +31,17 @@ export async function resolveMcpApprovalCards(
   actor: Actor,
   input: McpApprovalResolution,
 ): Promise<void> {
+  // The explicit thread must belong to this bot: its own chat, or a group it
+  // is a member of. Otherwise a stale or forged threadId could resolve
+  // another bot's cards.
   const threads = input.threadId
     ? await deps.prisma.thread.findMany({
-        where: { id: input.threadId, spaceId: actor.spaceId, userId: actor.userId },
+        where: {
+          id: input.threadId,
+          spaceId: actor.spaceId,
+          userId: actor.userId,
+          OR: [{ botId: input.botId }, { group: { members: { some: { botId: input.botId } } } }],
+        },
         select: { id: true },
       })
     : [await requireBotThread(deps, actor, input.botId)].map(({ thread }) => ({ id: thread.id }));
@@ -45,9 +53,10 @@ export async function resolveMcpApprovalCards(
     block.status !== "dismissed";
 
   for (const thread of threads) {
-    const eventSeqs: number[] = [];
-    await withTransactionRetry(() =>
-      deps.prisma.$transaction(
+    await withTransactionRetry(() => {
+      // Reset per attempt: a rolled-back attempt must not leave stale seqs.
+      const eventSeqs: number[] = [];
+      return deps.prisma.$transaction(
         async (tx) => {
           const messages = await tx.message.findMany({
             where: { threadId: thread.id },
@@ -71,10 +80,12 @@ export async function resolveMcpApprovalCards(
             });
             eventSeqs.push(event.seq);
           }
+          return eventSeqs;
         },
         { isolationLevel: "Serializable" },
-      ),
-    );
-    for (const seq of eventSeqs) await deps.events.notify(thread.id, seq);
+      );
+    }).then(async (eventSeqs) => {
+      for (const seq of eventSeqs) await deps.events.notify(thread.id, seq);
+    });
   }
 }
