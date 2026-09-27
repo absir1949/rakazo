@@ -161,6 +161,7 @@ import {
   toComputerStatus,
 } from "./computer-status.js";
 import { searchIntegrationCatalog } from "./integration-catalog.js";
+import { resolveMcpApprovalCards } from "./mcp-approval.js";
 import { buildMcpUpdateMaterial } from "./mcp-material.js";
 import {
   disconnectMemoryProvider,
@@ -3243,7 +3244,24 @@ export function createRouter(deps: RouterDeps) {
               update: {},
             });
           });
+          await resolveMcpApprovalCards(
+            onboardingDeps,
+            context.actor,
+            input.botId,
+            input.serverId,
+            "connected",
+          );
           return mcpAssignmentDto(row);
+        }),
+        dismiss: authed.mcp.assignments.dismiss.handler(async ({ context, input }) => {
+          await resolveMcpApprovalCards(
+            onboardingDeps,
+            context.actor,
+            input.botId,
+            input.serverId,
+            "dismissed",
+          );
+          return { ok: true as const };
         }),
         replace: authed.mcp.assignments.replace.handler(async ({ context, input }) => {
           const result = await deps.prisma.$transaction(async (tx) => {

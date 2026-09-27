@@ -6056,16 +6056,11 @@ const MessageView = memo(function MessageView({
           );
         }
         if (block.kind === "mcp_approval") {
+          const botId = "botId" in artifactTarget ? artifactTarget.botId : message.botId;
+          if (!botId) return null;
           return (
             <div key={i} className="flex justify-start">
-              <McpApprovalCard
-                botId={"botId" in artifactTarget ? artifactTarget.botId : message.botId}
-                name={block.name}
-                serverId={block.serverId}
-                transport={block.transport}
-                endpoint={block.endpoint}
-                needsOAuth={block.needsOAuth}
-              />
+              <McpApprovalCard botId={botId} block={block} />
             </div>
           );
         }

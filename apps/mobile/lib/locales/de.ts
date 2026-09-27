@@ -86,6 +86,9 @@ export const DE_MESSAGES: Record<string, string> = {
   "Always allowed": "Immer erlaubt",
   Answer: "Antwort",
   Answered: "Beantwortet",
+  Approve: "Genehmigen",
+  "Approve this server to let your agent use its tools.":
+    "Genehmige diesen Server, damit dein Agent seine Tools nutzen kann.",
   "Answered: {answer}": "Beantwortet: {answer}",
   Archive: "Archivieren",
   "Archived. Chat, memory, and files kept.":
@@ -259,10 +262,13 @@ export const DE_MESSAGES: Record<string, string> = {
   "Authorization code": "Autorisierungscode",
   "Configured by deployment": "Durch die Bereitstellung konfiguriert",
   "Connect API key": "API-Schlüssel verbinden",
+  "Connect MCP server {name}": "MCP-Server „{name}“ verbinden",
   "Connect this provider to use it as your personal model.":
     "Verbinde diesen Anbieter, um ihn als persönliches Modell zu verwenden.",
   "Connected and using {label}.": "Verbunden, {label} ist aktiv.",
   "Connected · {label}": "Verbunden · {label}",
+  "Connected. Its tools are available from your next message.":
+    "Verbunden. Seine Tools sind ab deiner nächsten Nachricht verfügbar.",
   "Context limit": "Kontextlimit",
   "Could not change the default model": "Standardmodell konnte nicht geändert werden",
   "Could not connect this provider": "Anbieter konnte nicht verbunden werden",
@@ -288,6 +294,7 @@ export const DE_MESSAGES: Record<string, string> = {
   "Model id": "Modell-ID",
   "Model updated.": "Modell aktualisiert.",
   "Not connected": "Nicht verbunden",
+  "Not now": "Nicht jetzt",
   "Now using {label}.": "{label} ist jetzt aktiv.",
   "OpenAI-compatible server URL": "URL eines OpenAI-kompatiblen Servers",
   Optional: "Optional",
@@ -342,6 +349,7 @@ export const DE_MESSAGES: Record<string, string> = {
   "Connect Treg": "Treg verbinden",
   "Connection pending": "Verbindung steht aus",
   "Could not add source": "Quelle konnte nicht hinzugefügt werden",
+  "Could not approve this server": "Server konnte nicht genehmigt werden",
   "Could not connect": "Verbindung fehlgeschlagen",
   "Could not remove source": "Quelle konnte nicht entfernt werden",
   "Could not rename connection": "Verbindung konnte nicht umbenannt werden",
@@ -515,6 +523,8 @@ export const DE_MESSAGES: Record<string, string> = {
   "Continue in Background": "Im Hintergrund fortfahren",
   "Could not complete action": "Aktion konnte nicht abgeschlossen werden",
   Dismiss: "Schließen",
+  "Dismissed. Reconnect anytime from MCP settings.":
+    "Verworfen. Stelle die Verbindung jederzeit über die MCP-Einstellungen wieder her.",
   "Getting ready": "Wird vorbereitet",
   "Make sure nothing is still running on this computer.":
     "Stelle sicher, dass auf diesem Computer nichts mehr läuft.",
