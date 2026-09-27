@@ -3176,7 +3176,7 @@ export function createRouter(deps: RouterDeps) {
                   revertConnectedMcpApprovals(
                     onboardingDeps,
                     context.actor,
-                    { botId: row.botId, serverId: server.id },
+                    { botId: row.botId, serverId: server.id, status: "dismissed" },
                     tx,
                   ),
                 ),
@@ -3347,7 +3347,7 @@ export function createRouter(deps: RouterDeps) {
                   revertConnectedMcpApprovals(
                     onboardingDeps,
                     context.actor,
-                    { botId: bot.id, serverId },
+                    { botId: bot.id, serverId, status: "pending" },
                     tx,
                   ),
                 ),

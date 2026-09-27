@@ -154,10 +154,26 @@ describe("resolveMcpApprovalCards", () => {
     await resolveMcpApprovalCards(
       deps,
       actor,
-      { botId: "bot", serverId: "srv-a", status: "connected" },
+      { botId: "bot", serverId: "srv-a", status: "connected", threadId: "group-thread" },
       effect,
     );
     expect(effect).toHaveBeenCalledWith(tx, { assign: false });
+    expect(tx.message.update).not.toHaveBeenCalled();
+  });
+
+  it("still assigns from settings after a card was dismissed", async () => {
+    const blocks = [{ kind: "mcp_approval", name: "A", serverId: "srv-a", status: "dismissed" }];
+    const { deps, actor, tx } = fixture(blocks);
+    const effect = vi.fn(async () => "saved");
+    await expect(
+      resolveMcpApprovalCards(
+        deps,
+        actor,
+        { botId: "bot", serverId: "srv-a", status: "connected" },
+        effect,
+      ),
+    ).resolves.toBe("saved");
+    expect(effect).toHaveBeenCalledWith(tx, { assign: true });
     expect(tx.message.update).not.toHaveBeenCalled();
   });
 
@@ -168,11 +184,47 @@ describe("resolveMcpApprovalCards", () => {
       { kind: "mcp_approval", name: "C", serverId: "srv-a", status: "dismissed" },
     ];
     const { deps, actor, tx } = fixture(blocks);
-    await revertConnectedMcpApprovals(deps, actor, { botId: "bot", serverId: "srv-a" });
+    await revertConnectedMcpApprovals(deps, actor, {
+      botId: "bot",
+      serverId: "srv-a",
+      status: "pending",
+    });
+    expect(deps.prisma.thread.findMany).toHaveBeenCalledWith({
+      where: {
+        spaceId: "space",
+        userId: "user",
+        OR: [{ botId: "bot" }, { groupId: { not: null } }],
+      },
+      select: { id: true },
+    });
     expect(tx.message.update).toHaveBeenCalledWith({
       where: { id: "card-message" },
       data: {
         blocks: [{ ...blocks[0], status: "pending" }, blocks[1], blocks[2]],
+      },
+    });
+  });
+
+  it("dismisses connected and pending cards when the server is deleted", async () => {
+    const blocks = [
+      { kind: "mcp_approval", name: "A", serverId: "srv-a", status: "connected" },
+      { kind: "mcp_approval", name: "Open", serverId: "srv-a", status: "pending" },
+      { kind: "mcp_approval", name: "C", serverId: "srv-a", status: "dismissed" },
+    ];
+    const { deps, actor, tx } = fixture(blocks);
+    await revertConnectedMcpApprovals(deps, actor, {
+      botId: "bot",
+      serverId: "srv-a",
+      status: "dismissed",
+    });
+    expect(tx.message.update).toHaveBeenCalledWith({
+      where: { id: "card-message" },
+      data: {
+        blocks: [
+          { ...blocks[0], status: "dismissed" },
+          { ...blocks[1], status: "dismissed" },
+          blocks[2],
+        ],
       },
     });
   });
