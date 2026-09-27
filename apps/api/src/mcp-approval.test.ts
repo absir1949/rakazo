@@ -220,7 +220,30 @@ describe("resolveMcpApprovalCards", () => {
       { kind: "mcp_approval", name: "C", serverId: "srv-a", status: "dismissed" },
     ];
     const { deps, actor, tx } = fixture(blocks);
+    tx.message.findMany = vi.fn(async () => [
+      {
+        id: "card-message",
+        botId: null,
+        threadId: "group-thread",
+        thread: { botId: "bot" },
+        blocks,
+      },
+    ]);
     await dismissMcpServerApprovals(deps, actor, "srv-a");
+    expect(deps.prisma.thread.findMany).not.toHaveBeenCalled();
+    expect(tx.message.findMany).toHaveBeenCalledWith({
+      where: {
+        thread: { spaceId: "space", userId: "user" },
+        blocks: { string_contains: "srv-a" },
+      },
+      select: {
+        id: true,
+        botId: true,
+        blocks: true,
+        threadId: true,
+        thread: { select: { botId: true } },
+      },
+    });
     expect(tx.message.update).toHaveBeenCalledWith({
       where: { id: "card-message" },
       data: {
