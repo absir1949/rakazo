@@ -1,13 +1,11 @@
 import type { ConnectorRegistry } from "@rakazo/adapters";
 import type { Actor, MessageBlock } from "@rakazo/contracts";
 import { featuredConnectorProvidersMatch } from "@rakazo/core";
+import type { Prisma, PrismaClient, ThreadEvents } from "@rakazo/db";
 import {
   appendEventInTransaction,
   createThreadMessageInTransaction,
   IsolationError,
-  type Prisma,
-  type PrismaClient,
-  type ThreadEvents,
 } from "@rakazo/db";
 import { requireBotThread, updateBlocks } from "./bot-thread.js";
 

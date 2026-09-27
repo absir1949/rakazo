@@ -1,5 +1,5 @@
 import type { MessageBlock } from "@rakazo/contracts";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ViewProps } from "react-native";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { rpc } from "../lib/api";
@@ -42,6 +42,12 @@ export function McpApprovalCard({
   const tokens = useMobileTokens();
   const [localStatus, setLocalStatus] = useState<"pending" | "connected" | "dismissed">("pending");
   const [pendingAction, setPendingAction] = useState<"approve" | "dismiss" | null>(null);
+  useEffect(() => {
+    if (block.status === "connected" || block.status === "dismissed") return;
+    setLocalStatus((current) =>
+      current === "connected" || current === "dismissed" ? "pending" : current,
+    );
+  }, [block.status]);
   const status = block.status && block.status !== "pending" ? block.status : localStatus;
   const summary = block.endpoint ?? `stdio · ${block.transport}`;
 

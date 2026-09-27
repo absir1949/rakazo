@@ -1,6 +1,6 @@
 import type * as db from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
-import { resolveMcpApprovalCards } from "./mcp-approval.js";
+import { resolveMcpApprovalCards, revertConnectedMcpApprovals } from "./mcp-approval.js";
 
 vi.mock("@rakazo/db", async (original) => ({
   ...(await original<typeof db>()),
@@ -101,6 +101,16 @@ describe("resolveMcpApprovalCards", () => {
       threadId: "group-thread",
     });
     expect(deps.prisma.thread.findMany).toHaveBeenCalledTimes(2);
+    expect(deps.prisma.thread.findMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        id: "group-thread",
+        spaceId: "space",
+        userId: "user",
+        groupId: { not: null },
+      },
+      select: { id: true },
+    });
+    expect(deps.prisma.bot.findFirst).toHaveBeenCalled();
     expect(tx.message.update).toHaveBeenCalledWith({
       where: { id: "card-message" },
       data: { blocks: [{ ...blocks[0], status: "connected" }] },
@@ -114,6 +124,69 @@ describe("resolveMcpApprovalCards", () => {
       botId: "bot",
       serverId: "srv-a",
       status: "connected",
+    });
+    expect(tx.message.update).not.toHaveBeenCalled();
+  });
+
+  it("writes the assignment in the same transaction when a card connects", async () => {
+    const blocks = [{ kind: "mcp_approval", name: "A", serverId: "srv-a", status: "pending" }];
+    const { deps, actor, tx } = fixture(blocks);
+    const effect = vi.fn(async () => "saved");
+    await expect(
+      resolveMcpApprovalCards(
+        deps,
+        actor,
+        { botId: "bot", serverId: "srv-a", status: "connected" },
+        effect,
+      ),
+    ).resolves.toBe("saved");
+    expect(effect).toHaveBeenCalledWith(tx, { assign: true });
+    expect(tx.message.update).toHaveBeenCalledWith({
+      where: { id: "card-message" },
+      data: { blocks: [{ ...blocks[0], status: "connected" }] },
+    });
+  });
+
+  it("does not assign when a dismissed card already won", async () => {
+    const blocks = [{ kind: "mcp_approval", name: "A", serverId: "srv-a", status: "dismissed" }];
+    const { deps, actor, tx } = fixture(blocks);
+    const effect = vi.fn(async () => "saved");
+    await resolveMcpApprovalCards(
+      deps,
+      actor,
+      { botId: "bot", serverId: "srv-a", status: "connected" },
+      effect,
+    );
+    expect(effect).toHaveBeenCalledWith(tx, { assign: false });
+    expect(tx.message.update).not.toHaveBeenCalled();
+  });
+
+  it("returns a connected card to pending when the assignment is removed", async () => {
+    const blocks = [
+      { kind: "mcp_approval", name: "A", serverId: "srv-a", status: "connected" },
+      { kind: "mcp_approval", name: "B", serverId: "srv-b", status: "connected" },
+      { kind: "mcp_approval", name: "C", serverId: "srv-a", status: "dismissed" },
+    ];
+    const { deps, actor, tx } = fixture(blocks);
+    await revertConnectedMcpApprovals(deps, actor, { botId: "bot", serverId: "srv-a" });
+    expect(tx.message.update).toHaveBeenCalledWith({
+      where: { id: "card-message" },
+      data: {
+        blocks: [{ ...blocks[0], status: "pending" }, blocks[1], blocks[2]],
+      },
+    });
+  });
+
+  it("does not repaint another bot's direct chat when the bot has left", async () => {
+    const blocks = [{ kind: "mcp_approval", name: "A", serverId: "srv-a", status: "pending" }];
+    const { deps, actor, tx } = fixture(blocks);
+    deps.prisma.thread.findMany = vi.fn(async () => []);
+    deps.prisma.bot.findFirst = vi.fn(async () => null);
+    await resolveMcpApprovalCards(deps, actor, {
+      botId: "bot",
+      serverId: "srv-a",
+      status: "dismissed",
+      threadId: "other-thread",
     });
     expect(tx.message.update).not.toHaveBeenCalled();
   });

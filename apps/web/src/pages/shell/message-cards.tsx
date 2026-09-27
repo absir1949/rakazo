@@ -343,6 +343,14 @@ export function McpApprovalCard({
   const [localStatus, setLocalStatus] = useState<McpApprovalState>("pending");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // A removal repaints the block to pending. Drop an in-session connected
+  // override so the card does not keep the old decision.
+  useEffect(() => {
+    if (savedStatus === "connected" || savedStatus === "dismissed") return;
+    setLocalStatus((current) =>
+      current === "connected" || current === "dismissed" ? "pending" : current,
+    );
+  }, [savedStatus]);
   // Blocks saved before the status field existed have none and count as pending.
   const state =
     savedStatus === "connected" || savedStatus === "dismissed" ? savedStatus : localStatus;
