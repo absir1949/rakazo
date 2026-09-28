@@ -3087,9 +3087,13 @@ export function createRunExecutor(deps: ExecutorDeps) {
             if (args.credential) {
               try {
                 destination = normalizeSecretDestination(args.credential);
-              } catch {
+              } catch (error) {
                 return finish({
-                  error: "Specify a credential name, HTTPS origin, and auth method.",
+                  error:
+                    error instanceof Error &&
+                    error.message.startsWith("Invalid credential destination")
+                      ? error.message
+                      : "Specify a credential name, HTTPS origin, and auth method.",
                 });
               }
             }
