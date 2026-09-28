@@ -36,6 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-liberation \
     fonts-dejavu-core \
     fonts-noto-cjk \
+    locales \
     dbus-x11 \
     xdg-desktop-portal \
     xdg-desktop-portal-gtk \
