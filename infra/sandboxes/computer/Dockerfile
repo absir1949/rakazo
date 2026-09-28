@@ -35,6 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     fonts-liberation \
     fonts-dejavu-core \
+    fonts-noto-cjk \
     dbus-x11 \
     xdg-desktop-portal \
     xdg-desktop-portal-gtk \
@@ -44,6 +45,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     openssh-client \
     unzip \
+    xclip \
+    xsel \
   && rm -rf /var/lib/apt/lists/* \
   && groupadd --gid 1000 rakazo \
   && useradd --uid 1000 --gid rakazo --create-home --shell /bin/bash rakazo \
@@ -68,6 +71,11 @@ RUN set -eux; \
   uvx --version
 ENV DISPLAY=:1
 ENV HOME=/home/rakazo
+# Keep UTF-8 explicit (an empty LANG broke non-ASCII file handling in the
+# file chooser for CJK-market users) and generate zh_CN.UTF-8 so deployments
+# that override the computer environment can opt in to a Chinese locale.
+RUN sed -i 's/^# zh_CN.UTF-8 UTF-8/zh_CN.UTF-8 UTF-8/' /etc/locale.gen && locale-gen
+ENV LANG=C.UTF-8
 ENV UV_TOOL_DIR=/home/rakazo/.local/share/uv/tools \
     UV_TOOL_BIN_DIR=/home/rakazo/.local/bin \
     UV_PYTHON_INSTALL_DIR=/home/rakazo/.local/share/uv/python \
